@@ -5,3 +5,5 @@ numpy==1.26.4
 matplotlib==3.8.0
 joblib==1.4.2
 jupyterlab
+fastapi
+uvicorn
