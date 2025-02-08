@@ -11,7 +11,7 @@ import time
 app = FastAPI(title="Event Logger Service", version="1.0.0", description="Event Logger with Producer-Consumer Model")
 
 # Database setup
-DB_NAME = os.getenv("LOGS_DB_NAME", "db.sqlite3")
+DB_NAME = os.getenv("LOGS_DB_NAME", "../../db.sqlite3")
 
 class Event(BaseModel):
     TS: int  # UNIX Timestamp (in nanoseconds)
@@ -56,7 +56,7 @@ def db_writer_batch():
             EVENT_WRITE_QUEUE.task_done()
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {type(e)}")
         except:
             continue  # Timeout when queue is empty
 
@@ -66,7 +66,7 @@ def flush_batch(batch):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.executemany('''
-            INSERT INTO events (TS, PID, TYPE, FLAG, PATTERN, OPEN, CREATE, DELETE, ENCRYPT, FILENAME)
+            INSERT INTO events (TS, PID, TYPE, FLAG, PATTERN, \'OPEN\', \'CREATE\', \'DELETE\', \'ENCRYPT\', FILENAME)
             VALUES (strftime(\'%s\', \'now\'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', [(e['PID'], e['TYPE'], e.get('FLAG'), e.get('PATTERN'),
                e.get('OPEN', 0), e.get('CREATE', 0), e.get('DELETE', 0),
@@ -79,7 +79,7 @@ def flush_batch(batch):
     
 
 # Start DB writer in a background thread
-consumer_thread = threading.Thread(target=db_writer, daemon=True)
+consumer_thread = threading.Thread(target=db_writer_batch, daemon=True)
 consumer_thread.start()
 
 # API Route (Producer)
