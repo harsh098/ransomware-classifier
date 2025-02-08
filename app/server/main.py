@@ -43,7 +43,7 @@ def db_writer():
             cursor.execute('''
                 INSERT INTO events (TS, PID, TYPE, FLAG, PATTERN, \'OPEN\', \'CREATE\', \'DELETE\', \'ENCRYPT\', \'FILENAME\')
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (event['TS'], event['PID'], event['TYPE'], event.get('FLAG'), event.get('PATTERN'),
+            ''', ('strftime(\'%s\', \'now\')', event['PID'], event['TYPE'], event.get('FLAG'), event.get('PATTERN'),
                   event.get('OPEN', 0), event.get('CREATE', 0), event.get('DELETE', 0),
                   event.get('ENCRYPT', 0), event.get('FILENAME')))
             conn.commit()
