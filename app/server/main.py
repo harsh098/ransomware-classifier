@@ -29,30 +29,54 @@ class Event(BaseModel):
 EVENT_WRITE_QUEUE = Queue()
 
 # DB Writer (Consumer)
-def db_writer():
-    """Consumer thread that writes events to SQLite."""
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 100))
+BATCH_INTERVAL = int(os.getenv('BATCH_INTERVAL', 1))  # seconds
+
+def db_writer_batch():
+    """Consumer thread that writes events in batches to SQLite."""
+    batch = []
+    last_flush_time = time.time()
+
     while True:
         try:
-            event = EVENT_WRITE_QUEUE.get()
-            if event is None:
-                break  # Graceful shutdown
+            event = EVENT_WRITE_QUEUE.get(timeout=1)
+            if event is None:  # Graceful shutdown
+                if batch:
+                    flush_batch(batch)
+                break
 
-            # Insert event into the database
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO events (TS, PID, TYPE, FLAG, PATTERN, \'OPEN\', \'CREATE\', \'DELETE\', \'ENCRYPT\', \'FILENAME\')
-                VALUES (strftime(\'%s\', \'now\'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (event['PID'], event['TYPE'], event.get('FLAG'), event.get('PATTERN'),
-                  event.get('OPEN', 0), event.get('CREATE', 0), event.get('DELETE', 0),
-                  event.get('ENCRYPT', 0), event.get('FILENAME')))
-            conn.commit()
-            conn.close()
+            batch.append(event)
 
-            print(f"Event written to DB: {event}")
+            # Flush batch if size exceeds BATCH_SIZE or time interval elapses
+            if len(batch) >= BATCH_SIZE or time.time() - last_flush_time >= BATCH_INTERVAL:
+                flush_batch(batch)
+                batch = []  # Reset batch
+                last_flush_time = time.time()
+
             EVENT_WRITE_QUEUE.task_done()
+
         except Exception as e:
-            print(f"Error writing to DB: {e}")
+            print(f"Error: {e}")
+        except:
+            continue  # Timeout when queue is empty
+
+def flush_batch(batch):
+    """Write a batch of events to SQLite."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.executemany('''
+            INSERT INTO events (TS, PID, TYPE, FLAG, PATTERN, OPEN, CREATE, DELETE, ENCRYPT, FILENAME)
+            VALUES (strftime(\'%s\', \'now\'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', [(e['PID'], e['TYPE'], e.get('FLAG'), e.get('PATTERN'),
+               e.get('OPEN', 0), e.get('CREATE', 0), e.get('DELETE', 0),
+               e.get('ENCRYPT', 0), e.get('FILENAME')) for e in batch])
+        conn.commit()
+        conn.close()
+        print(f"Flushed {len(batch)} events to DB.")
+    except Exception as e:
+        print(f"Failed to flush batch: {e}")
+    
 
 # Start DB writer in a background thread
 consumer_thread = threading.Thread(target=db_writer, daemon=True)
