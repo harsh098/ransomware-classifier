@@ -21,6 +21,14 @@ def init_db():
             FILENAME TEXT
         )
     ''')
+    cursor.execute(
+    '''
+        CREATE TABLE IF NOT EXISTS incident (
+            TS INTEGER NOT NULL,
+            PID INTEGER NOT NULL
+        );
+    '''
+    )
     conn.commit()
     conn.close()
 

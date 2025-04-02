@@ -91,13 +91,41 @@ def fetch_recent_events():
     conn = sqlite3.connect(DB_PATH)
     query = "SELECT * FROM events WHERE TS >= strftime('%s' , 'now', '-10 minutes');"
     events = pd.read_sql(query, conn)
+    
+    if events.empty:
+        conn.close()
+        return pd.DataFrame()
+    
     events = prepare_dfs(events)
     pidarr = events['PID']
     events = preprocess_input(events)
-    prediction = pd.DataFrame({'PID':pidarr ,'Pred': model.predict(events)})
-    return prediction
+    
+    predictions = model.predict(events)
+    prediction_df = pd.DataFrame({'PID': pidarr, 'Pred': predictions})
+    
+    # Insert predictions with value 1.0 into the incident table
+    cursor = conn.cursor()
+    for _, row in prediction_df.iterrows():
+        if row['Pred'] == 1.0:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO incident (PID, TS)
+                SELECT ?, strftime('%s', 'now')
+                WHERE NOT EXISTS (
+                    SELECT PID, TS FROM incident
+                    WHERE PID = ?
+                    AND TS >= strftime('%s', 'now', '-10 minutes')
+                );
+                """,
+                (row['PID'], row['PID'])
+            )
+    
+    conn.commit()
+    conn.close()
+    
+    return prediction_df
 
-def poll_database(interval=610):  # Poll every 10 minutes
+def poll_database(interval=10):  # Poll every 10 seconds
     while True:
         recent_events = fetch_recent_events()
         if recent_events.size>0:
